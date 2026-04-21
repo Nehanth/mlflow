@@ -25,6 +25,7 @@ import { useApiKeyConfiguration } from '../../../../../gateway/components/model-
 import type { ApiKeyConfiguration } from '../../../../../gateway/components/model-configuration/types';
 import { generateRandomName } from '../../../../../common/utils/NameUtils';
 import { useEndpointsQuery } from '../../../../../gateway/hooks/useEndpointsQuery';
+import { useSecretsConfigQuery } from '../../../../../gateway/hooks/useSecretsConfigQuery';
 import { getEndpointDisplayInfo } from '../../../../../gateway/utils/gatewayUtils';
 
 type ModelConfigMode = 'endpoint' | 'direct';
@@ -36,15 +37,16 @@ const DEFAULT_PROVIDER = 'openai';
 // Allowed core providers for issue detection, for these we support fetching API keys
 // and set them when running jobs. For other providers, users should configure gateway
 // endpoints directly.
-const ALLOWED_PROVIDERS = ['openai', 'azure', 'anthropic', 'gemini', 'bedrock'] as const;
+// TODO: add bedrock (requires boto3)
+const ALLOWED_PROVIDERS = ['openai', 'anthropic', 'gemini', 'azure'] as const;
 
 // Display names for providers
+// eslint-disable-next-line @databricks/no-const-object-record-string -- TODO(FEINF-2058)
 const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   openai: 'OpenAI',
-  azure: 'Azure OpenAI',
   anthropic: 'Anthropic',
   gemini: 'Google Gemini',
-  bedrock: 'Amazon Bedrock',
+  azure: 'Azure OpenAI',
 };
 
 const DEFAULT_API_KEY_CONFIG: ApiKeyConfiguration = {
@@ -59,12 +61,11 @@ const DEFAULT_API_KEY_CONFIG: ApiKeyConfiguration = {
 };
 
 // Default to recommended models for each provider
+// eslint-disable-next-line @databricks/no-const-object-record-string -- TODO(FEINF-2058)
 const DEFAULT_MODEL_BY_PROVIDER: Record<string, string> = {
   openai: 'gpt-5.4',
-  azure: 'gpt-5.4',
   anthropic: 'claude-sonnet-4-6',
   gemini: 'gemini-2.5-pro',
-  bedrock: 'claude-sonnet-4-5',
 };
 
 export interface ModelSelectionValues {
@@ -104,13 +105,16 @@ export const IssueDetectionModelSelection = forwardRef<
   const [selectedEndpointName, setSelectedEndpointName] = useState<string | undefined>();
   const [hasInitializedMode, setHasInitializedMode] = useState(false);
 
-  // Set initial mode based on whether endpoints are available
+  // Set initial mode based on whether endpoints are available, and auto-select first endpoint
   useEffect(() => {
     if (!isLoadingEndpoints && !hasInitializedMode) {
       setMode(hasEndpoints ? 'endpoint' : 'direct');
+      if (hasEndpoints && endpoints.length > 0) {
+        setSelectedEndpointName(endpoints[0].name);
+      }
       setHasInitializedMode(true);
     }
-  }, [isLoadingEndpoints, hasEndpoints, hasInitializedMode]);
+  }, [isLoadingEndpoints, hasEndpoints, hasInitializedMode, endpoints]);
 
   const [provider, setProvider] = useState(DEFAULT_PROVIDER);
   const [model, setModel] = useState(DEFAULT_MODEL_BY_PROVIDER[DEFAULT_PROVIDER]);
@@ -143,7 +147,7 @@ export const IssueDetectionModelSelection = forwardRef<
 
   // Get display value for the dropdown
   const dropdownDisplayValue = useMemo(() => {
-    if (mode === 'direct') {
+    if (hasInitializedMode && mode === 'direct') {
       return intl.formatMessage({
         defaultMessage: 'Configure model directly',
         description: 'Option to configure model directly instead of using an endpoint',
@@ -155,7 +159,7 @@ export const IssueDetectionModelSelection = forwardRef<
     }
     // No endpoint selected yet - return empty to show placeholder
     return '';
-  }, [mode, selectedEndpointName, endpointOptions, intl]);
+  }, [mode, selectedEndpointName, endpointOptions, intl, hasInitializedMode]);
 
   // Handle selection from dropdown
   const handleDropdownSelect = useCallback((value: string) => {
@@ -168,18 +172,18 @@ export const IssueDetectionModelSelection = forwardRef<
     }
   }, []);
 
-  // Update API key mode to 'existing' when secrets become available for the selected provider
+  // Update API key mode to 'existing' and auto-select first secret when secrets become available
   useEffect(() => {
     if (provider && existingSecrets.length > 0) {
       setApiKeyConfig((prev) => {
         // Only update if currently in 'new' mode with no fields filled
         if (prev.mode === 'new' && Object.keys(prev.newSecret.secretFields).length === 0) {
-          return { ...prev, mode: 'existing' };
+          return { ...prev, mode: 'existing', existingSecretId: existingSecrets[0].secret_id };
         }
         return prev;
       });
     }
-  }, [provider, existingSecrets.length]);
+  }, [provider, existingSecrets]);
 
   const handleProviderChange = useCallback((newProvider: string) => {
     setProvider(newProvider);
@@ -212,11 +216,11 @@ export const IssueDetectionModelSelection = forwardRef<
 
   const isApiKeyValid =
     apiKeyConfig.mode === 'existing'
-      ? !!apiKeyConfig.existingSecretId
+      ? Boolean(apiKeyConfig.existingSecretId)
       : Object.values(apiKeyConfig.newSecret.secretFields).some((v) => v) &&
-        (!saveKey || !!apiKeyConfig.newSecret.name);
+        (!saveKey || Boolean(apiKeyConfig.newSecret.name));
 
-  const isEndpointModeValid = mode === 'endpoint' && !!selectedEndpointName;
+  const isEndpointModeValid = mode === 'endpoint' && Boolean(selectedEndpointName);
   const isDirectModeValid = mode === 'direct' && Boolean(provider && model && isApiKeyValid);
   const isValid = (isEndpointModeValid || isDirectModeValid) && selectedTraceIds.length > 0;
 
@@ -233,7 +237,7 @@ export const IssueDetectionModelSelection = forwardRef<
   const hasEnteredNewApiKey =
     apiKeyConfig.mode === 'new' && Object.values(apiKeyConfig.newSecret.secretFields).some((v) => v);
   const shouldShowAdvancedSettings =
-    !!DEFAULT_MODEL_BY_PROVIDER[provider] || (hasEnteredNewApiKey && hasOptionalFields);
+    Boolean(DEFAULT_MODEL_BY_PROVIDER[provider]) || (hasEnteredNewApiKey && hasOptionalFields);
 
   useEffect(() => {
     onValidityChange(isValid);
@@ -297,7 +301,11 @@ export const IssueDetectionModelSelection = forwardRef<
               componentId="mlflow.traces.issue-detection-modal.model-source"
               id="mlflow.traces.issue-detection-modal.model-source"
               value={
-                mode === 'direct' ? [CONFIGURE_DIRECTLY_VALUE] : selectedEndpointName ? [selectedEndpointName] : []
+                hasInitializedMode && mode === 'direct'
+                  ? [CONFIGURE_DIRECTLY_VALUE]
+                  : selectedEndpointName
+                    ? [selectedEndpointName]
+                    : []
               }
             >
               <DialogComboboxTrigger
@@ -309,28 +317,32 @@ export const IssueDetectionModelSelection = forwardRef<
                 })}
                 renderDisplayedValue={() => (dropdownDisplayValue ? <span>{dropdownDisplayValue}</span> : null)}
               />
-              <DialogComboboxContent maxHeight={350}>
+              <DialogComboboxContent>
                 <DialogComboboxOptionList>
-                  {endpointOptions.map((option) => (
-                    <DialogComboboxOptionListSelectItem
-                      key={option.value}
-                      value={option.value}
-                      onChange={() => handleDropdownSelect(option.value)}
-                      checked={mode === 'endpoint' && selectedEndpointName === option.value}
-                    >
-                      {option.label}
-                      {option.provider && option.modelName && (
-                        <DialogComboboxHintRow>
-                          {option.provider} / {option.modelName}
-                        </DialogComboboxHintRow>
-                      )}
-                    </DialogComboboxOptionListSelectItem>
-                  ))}
+                  {endpointOptions.length > 0 && (
+                    <div css={{ maxHeight: 150, overflowY: 'auto' }}>
+                      {endpointOptions.map((option) => (
+                        <DialogComboboxOptionListSelectItem
+                          key={option.value}
+                          value={option.value}
+                          onChange={() => handleDropdownSelect(option.value)}
+                          checked={mode === 'endpoint' && selectedEndpointName === option.value}
+                        >
+                          {option.label}
+                          {option.provider && option.modelName && (
+                            <DialogComboboxHintRow>
+                              {option.provider} / {option.modelName}
+                            </DialogComboboxHintRow>
+                          )}
+                        </DialogComboboxOptionListSelectItem>
+                      ))}
+                    </div>
+                  )}
                   {endpointOptions.length > 0 && <DialogComboboxSeparator />}
                   <DialogComboboxOptionListSelectItem
                     value={CONFIGURE_DIRECTLY_VALUE}
                     onChange={() => handleDropdownSelect(CONFIGURE_DIRECTLY_VALUE)}
-                    checked={mode === 'direct'}
+                    checked={hasInitializedMode && mode === 'direct'}
                   >
                     <FormattedMessage
                       defaultMessage="Configure model directly"
@@ -410,7 +422,7 @@ export const IssueDetectionModelSelection = forwardRef<
                     provider={provider}
                     value={model}
                     onChange={setModel}
-                    componentIdPrefix="mlflow.traces.issue-detection-modal.model"
+                    componentId="mlflow.traces.issue-detection-modal.model"
                     label={
                       <Typography.Text css={{ fontSize: theme.typography.fontSizeSm }}>
                         <FormattedMessage defaultMessage="Model *" description="Label for model selection (required)" />
@@ -439,8 +451,9 @@ export const IssueDetectionModelSelection = forwardRef<
                     <Tooltip
                       componentId="mlflow.traces.issue-detection-modal.save-key-tooltip"
                       content={intl.formatMessage({
-                        defaultMessage: 'Saved API keys can be managed from the API Keys page',
-                        description: 'Tooltip explaining where saved API keys can be found',
+                        defaultMessage: 'Saved API keys can be managed in LLM Connections under Settings.',
+                        description:
+                          'Tooltip explaining where saved API keys can be found (LLM Connections section under Settings)',
                       })}
                     >
                       <span>
@@ -528,7 +541,7 @@ export const IssueDetectionModelSelection = forwardRef<
               onApiKeyConfigChange={setApiKeyConfig}
               authModes={authModes}
               defaultAuthMode={defaultAuthMode}
-              showModelSelector={!!DEFAULT_MODEL_BY_PROVIDER[provider]}
+              showModelSelector={Boolean(DEFAULT_MODEL_BY_PROVIDER[provider])}
             />
           </Accordion.Panel>
         </Accordion>

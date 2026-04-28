@@ -1,15 +1,18 @@
 ---
-start_date: 2026-04-23
-mlflow_issue: https://github.com/mlflow/mlflow/issues/21445
+
+## start_date: 2026-04-23
+
+mlflow_issue: [https://github.com/mlflow/mlflow/issues/21445](https://github.com/mlflow/mlflow/issues/21445)
 rfc_pr:
----
 
 # Scorer Presets for Common Evaluation Patterns
 
-| Author(s)              | Nehanth                   |
-| :--------------------- | :------------------------ |
-| **Date Last Modified** | 2026-04-28                |
-| **AI Assistant(s)**    | Claude Code               |
+
+| Author(s)              | Nehanth     |
+| ---------------------- | ----------- |
+| **Date Last Modified** | 2026-04-28  |
+| **AI Assistant(s)**    | Claude Code |
+
 
 # Summary
 
@@ -79,7 +82,7 @@ for name, scorer_names in list_presets().items():
 
 ### The Problem
 
-As described in [the original issue](https://github.com/mlflow/mlflow/issues/21445), the Databricks agent app template [`evaluate_agent.py`](https://github.com/databricks/app-templates/blob/main/agent-openai-agents-sdk/agent_server/evaluate_agent.py) imports and instantiates 9 separate scorers to evaluate a conversational agent:
+As described in [the original issue](https://github.com/mlflow/mlflow/issues/21445), the Databricks agent app template [evaluate_agent.py](https://github.com/databricks/app-templates/blob/main/agent-openai-agents-sdk/agent_server/evaluate_agent.py) imports and instantiates 9 separate scorers to evaluate a conversational agent:
 
 ```python
 from mlflow.genai.scorers import (
@@ -114,9 +117,7 @@ mlflow.genai.evaluate(
 Every team building agent evaluation follows this same pattern. This creates three problems (from the [original issue](https://github.com/mlflow/mlflow/issues/21445)):
 
 1. **No built-in grouping.** `get_all_scorers()` returns all 19 default-constructible scorers. Users evaluating a RAG pipeline get `ToolCallCorrectness`; users evaluating an agent get `RetrievalGroundedness`. Each unnecessary scorer wastes an LLM API call.
-
 2. **21 scorers to choose from.** Users must read documentation for each scorer to determine relevance. Session-level scorers (e.g., `KnowledgeRetention`) silently produce no results when passed to single-turn evaluation.
-
 3. **Copy-paste problem.** The same scorer lists get duplicated across templates, notebooks, and tutorials. When new scorers are added, existing lists don't pick them up.
 
 ### Who Benefits
@@ -186,7 +187,7 @@ class Preset:
 
 **Key design decisions:**
 
-- **Immutable.** Scorers are stored as a tuple and exposed via a read-only property. Built-in presets are module-level constants and must not be mutated. Users compose via `+` which returns a new list.
+- **Immutable.** Scorers are stored as a tuple and exposed via a read-only property. Built-in presets are module-level constants and must not be mutated.
 - **Not a `Scorer` subclass.** A preset doesn't produce feedback -- it's a container. The evaluation loop assumes one scorer = one result column. Making `Preset` a scorer would require changes throughout the pipeline (aggregation, telemetry, serialization).
 - **Iterable.** Supports `__iter__`, `__len__`, and `__add__`/`__radd__` so it composes naturally: `AGENT + [my_scorer]`, `[my_scorer] + AGENT`, or `AGENT + SAFETY`.
 - **Stores instances, not classes.** Users pass already-configured scorer instances.
@@ -266,15 +267,17 @@ def validate_scorers(scorers: list[Any]) -> list[Scorer]:
 
 MLflow ships five built-in presets as module-level constants. All contained scorers use default constructors.
 
-> **Note:** **`TaskSuccess`** is a new scorer proposed in [mlflow/mlflow#22972](https://github.com/mlflow/mlflow/issues/22972). It evaluates whether an agent successfully accomplished the user's task without requiring ground truth data — unlike `Correctness`, which requires an `expectations` column. This scorer would be added to the `AGENT`, `CONVERSATIONAL_AGENT`, and `QUALITY` presets. This work can be part of this RFC or be a future addition after this RFC is completed.
+> **Note:** `**TaskSuccess`** is a new scorer proposed in [mlflow/mlflow#22972](https://github.com/mlflow/mlflow/issues/22972). It evaluates whether an agent successfully accomplished the user's task without requiring ground truth data — unlike `Correctness`, which requires an `expectations` column. This scorer would be added to the `AGENT`, `CONVERSATIONAL_AGENT`, and `QUALITY` presets. This work can be part of this RFC or be a future addition after this RFC is completed.
 
-| Preset | Scorers | Use Case |
-|--------|---------|----------|
-| `RAG` | RetrievalRelevance, RetrievalSufficiency, RetrievalGroundedness, RelevanceToQuery, Safety, Completeness | Retrieval-augmented generation pipelines |
-| `AGENT` | ToolCallCorrectness, ToolCallEfficiency, RelevanceToQuery, Safety, Completeness, **TaskSuccess** | Single-turn tool-calling agents |
-| `CONVERSATIONAL_AGENT` | All of `AGENT` + UserFrustration, ConversationCompleteness, ConversationalSafety, ConversationalToolCallEfficiency, KnowledgeRetention | Multi-turn conversational agents |
-| `SAFETY` | Safety, ConversationalSafety | Safety-focused evaluation (composable with other presets) |
-| `QUALITY` | RelevanceToQuery, Fluency, Completeness, **TaskSuccess** | Architecture-independent output quality |
+
+| Preset                 | Scorers                                                                                                                                | Use Case                                                  |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `RAG`                  | RetrievalRelevance, RetrievalSufficiency, RetrievalGroundedness, RelevanceToQuery, Safety, Completeness                                | Retrieval-augmented generation pipelines                  |
+| `AGENT`                | ToolCallCorrectness, ToolCallEfficiency, RelevanceToQuery, Safety, Completeness, **TaskSuccess**                                       | Single-turn tool-calling agents                           |
+| `CONVERSATIONAL_AGENT` | All of `AGENT` + UserFrustration, ConversationCompleteness, ConversationalSafety, ConversationalToolCallEfficiency, KnowledgeRetention | Multi-turn conversational agents                          |
+| `SAFETY`               | Safety, ConversationalSafety                                                                                                           | Safety-focused evaluation (composable with other presets) |
+| `QUALITY`              | RelevanceToQuery, Fluency, Completeness, **TaskSuccess**                                                                               | Architecture-independent output quality                   |
+
 
 #### Design Rationale
 
@@ -470,20 +473,22 @@ from mlflow.genai.scorers import Preset, list_presets
 
 New file: `tests/genai/scorers/test_presets.py`
 
-| Test | Verifies |
-|------|----------|
-| `test_builtin_preset_{rag,agent,...}` | Exact scorer types in each built-in preset |
-| `test_custom_preset` | Users can create a `Preset` with arbitrary scorers |
-| `test_preset_in_validate_scorers` | `validate_scorers([AGENT, my_scorer])` flattens correctly |
-| `test_preset_deduplication` | `[AGENT, SAFETY]` deduplicates shared `Safety()` |
-| `test_dedup_preserves_different_names` | Two `Guidelines` with different names are both kept |
-| `test_preset_add_list` | `AGENT + [Fluency()]` returns a combined list |
-| `test_list_add_preset` | `[Fluency()] + AGENT` returns a combined list |
-| `test_preset_add_preset` | `AGENT + SAFETY` returns a combined list |
-| `test_preset_iter_and_len` | `list(AGENT)` and `len(AGENT)` work correctly |
+
+| Test                                     | Verifies                                                  |
+| ---------------------------------------- | --------------------------------------------------------- |
+| `test_builtin_preset_{rag,agent,...}`    | Exact scorer types in each built-in preset                |
+| `test_custom_preset`                     | Users can create a `Preset` with arbitrary scorers        |
+| `test_preset_in_validate_scorers`        | `validate_scorers([AGENT, my_scorer])` flattens correctly |
+| `test_preset_deduplication`              | `[AGENT, SAFETY]` deduplicates shared `Safety()`          |
+| `test_dedup_preserves_different_names`   | Two `Guidelines` with different names are both kept       |
+| `test_preset_add_list`                   | `AGENT + [Fluency()]` returns a combined list             |
+| `test_list_add_preset`                   | `[Fluency()] + AGENT` returns a combined list             |
+| `test_preset_add_preset`                 | `AGENT + SAFETY` returns a combined list                  |
+| `test_preset_iter_and_len`               | `list(AGENT)` and `len(AGENT)` work correctly             |
 | `test_preset_invalid_scorer_in_validate` | A preset containing a non-scorer raises `MlflowException` |
-| `test_list_presets` | Returns correct dict with correct class names |
-| `test_preset_repr` | `repr(AGENT)` shows name and scorer class names |
+| `test_list_presets`                      | Returns correct dict with correct class names             |
+| `test_preset_repr`                       | `repr(AGENT)` shows name and scorer class names           |
+
 
 ```python
 @pytest.mark.parametrize("preset", [RAG, AGENT, CONVERSATIONAL_AGENT, SAFETY, QUALITY])
@@ -495,23 +500,21 @@ def test_builtin_preset_contains_valid_scorers(preset):
 
 ### Files Changed
 
-| File | Change |
-|------|--------|
-| `mlflow/genai/scorers/presets.py` | **New.** `Preset` class, built-in presets, `list_presets()`. |
-| `mlflow/genai/scorers/__init__.py` | Add lazy imports for `Preset`, built-in presets, `list_presets`. |
-| `mlflow/genai/__init__.py` | Re-export `Preset`, `list_presets`. |
-| `mlflow/genai/scorers/validation.py` | Flatten presets and deduplicate in `validate_scorers()`. |
-| `tests/genai/scorers/test_presets.py` | **New.** Tests for `Preset` class and built-in presets. |
+
+| File                                  | Change                                                           |
+| ------------------------------------- | ---------------------------------------------------------------- |
+| `mlflow/genai/scorers/presets.py`     | **New.** `Preset` class, built-in presets, `list_presets()`.     |
+| `mlflow/genai/scorers/__init__.py`    | Add lazy imports for `Preset`, built-in presets, `list_presets`. |
+| `mlflow/genai/__init__.py`            | Re-export `Preset`, `list_presets`.                              |
+| `mlflow/genai/scorers/validation.py`  | Flatten presets and deduplicate in `validate_scorers()`.         |
+| `tests/genai/scorers/test_presets.py` | **New.** Tests for `Preset` class and built-in presets.          |
+
 
 ## Drawbacks
 
 1. **New class in the API.** Adds `Preset` to the public surface. Mitigation: it's a simple container with no complex behavior.
-
 2. **Opinionated defaults.** Not everyone will agree on which scorers belong in which preset. Mitigation: presets are extensible via `+`, and users can define their own.
-
 3. **Implicit behavior changes on upgrade.** A new scorer added to a built-in preset means different evaluation results after upgrading. Consistent with how `get_all_scorers()` already behaves.
-
-4. **Shared mutable state.** Built-in presets are module-level singletons. If a user mutates `AGENT.scorers`, it affects all subsequent uses in that process. Mitigation: document that built-in presets should not be mutated; use `+` for extension.
 
 # Alternatives
 
@@ -642,13 +645,8 @@ This is an **additive, non-breaking change**. Existing code continues to work un
 # Open Questions
 
 1. **Should `ConversationalRoleAdherence` be in `CONVERSATIONAL_AGENT`?** Currently excluded because it requires a defined persona. **Open for discussion.**
-
 2. **Should `Correctness` be in `AGENT` or `RAG`?** Currently only in `QUALITY` because it requires `expectations` data. **Open for discussion.**
-
 3. **Should there be an `ALL` preset?** `get_all_scorers()` already serves this role. **Recommendation:** Do not add.
-
 4. **Deduplication key.** Should deduplication use `type(scorer)` alone, or `(type(scorer), scorer.name)`? The latter preserves multiple instances of the same class with different names (e.g., two `Guidelines` with different rules).
+5. **Future: parameterized presets?** e.g., `AGENT.with_model("openai:/gpt-4o")` returning a new preset with the model set on all scorers. Deferred to keep the initial API simple.
 
-5. **Shared mutable state.** Built-in presets are module-level constants. Should we defensively copy on iteration, or is documenting "don't mutate" sufficient?
-
-6. **Future: parameterized presets?** e.g., `AGENT.with_model("openai:/gpt-4o")` returning a new preset with the model set on all scorers. Deferred to keep the initial API simple.

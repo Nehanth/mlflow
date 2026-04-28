@@ -8,7 +8,7 @@ rfc_pr:
 
 | Author(s)              | Nehanth                   |
 | :--------------------- | :------------------------ |
-| **Date Last Modified** | 2026-04-24                |
+| **Date Last Modified** | 2026-04-28                |
 | **AI Assistant(s)**    | Claude Code               |
 
 # Summary
@@ -140,7 +140,7 @@ A `Preset` is a named, iterable container of scorers. It is **not** a `Scorer` s
 
 ```python
 class Preset:
-    """A named collection of scorers for a common evaluation pattern.
+    """A named, immutable collection of scorers for a common evaluation pattern.
 
     Presets can be passed in the ``scorers`` list alongside individual
     scorers. They are flattened and deduplicated during validation,
@@ -152,14 +152,22 @@ class Preset:
     """
 
     def __init__(self, name: str, scorers: list[Scorer]):
-        self.name = name
-        self.scorers = list(scorers)
+        self._name = name
+        self._scorers = tuple(scorers)
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def scorers(self) -> tuple:
+        return self._scorers
 
     def __iter__(self):
-        return iter(self.scorers)
+        return iter(self._scorers)
 
     def __len__(self):
-        return len(self.scorers)
+        return len(self._scorers)
 
     def __add__(self, other):
         if isinstance(other, (Preset, list)):
@@ -172,12 +180,13 @@ class Preset:
         return NotImplemented
 
     def __repr__(self):
-        scorer_names = [type(s).__name__ for s in self.scorers]
-        return f"Preset('{self.name}', [{', '.join(scorer_names)}])"
+        scorer_names = [type(s).__name__ for s in self._scorers]
+        return f"Preset('{self._name}', [{', '.join(scorer_names)}])"
 ```
 
 **Key design decisions:**
 
+- **Immutable.** Scorers are stored as a tuple and exposed via a read-only property. Built-in presets are module-level constants and must not be mutated. Users compose via `+` which returns a new list.
 - **Not a `Scorer` subclass.** A preset doesn't produce feedback -- it's a container. The evaluation loop assumes one scorer = one result column. Making `Preset` a scorer would require changes throughout the pipeline (aggregation, telemetry, serialization).
 - **Iterable.** Supports `__iter__`, `__len__`, and `__add__`/`__radd__` so it composes naturally: `AGENT + [my_scorer]`, `[my_scorer] + AGENT`, or `AGENT + SAFETY`.
 - **Stores instances, not classes.** Users pass already-configured scorer instances.
@@ -257,20 +266,22 @@ def validate_scorers(scorers: list[Any]) -> list[Scorer]:
 
 MLflow ships five built-in presets as module-level constants. All contained scorers use default constructors.
 
+> **Note:** **`TaskSuccess`** is a new scorer proposed in [mlflow/mlflow#22972](https://github.com/mlflow/mlflow/issues/22972). It evaluates whether an agent successfully accomplished the user's task without requiring ground truth data — unlike `Correctness`, which requires an `expectations` column. This scorer would be added to the `AGENT`, `CONVERSATIONAL_AGENT`, and `QUALITY` presets. This work can be part of this RFC or be a future addition after this RFC is completed.
+
 | Preset | Scorers | Use Case |
 |--------|---------|----------|
 | `RAG` | RetrievalRelevance, RetrievalSufficiency, RetrievalGroundedness, RelevanceToQuery, Safety, Completeness | Retrieval-augmented generation pipelines |
-| `AGENT` | ToolCallCorrectness, ToolCallEfficiency, RelevanceToQuery, Safety, Completeness | Single-turn tool-calling agents |
+| `AGENT` | ToolCallCorrectness, ToolCallEfficiency, RelevanceToQuery, Safety, Completeness, **TaskSuccess** | Single-turn tool-calling agents |
 | `CONVERSATIONAL_AGENT` | All of `AGENT` + UserFrustration, ConversationCompleteness, ConversationalSafety, ConversationalToolCallEfficiency, KnowledgeRetention | Multi-turn conversational agents |
 | `SAFETY` | Safety, ConversationalSafety | Safety-focused evaluation (composable with other presets) |
-| `QUALITY` | RelevanceToQuery, Fluency, Completeness, Correctness | Architecture-independent output quality |
+| `QUALITY` | RelevanceToQuery, Fluency, Completeness, **TaskSuccess** | Architecture-independent output quality |
 
 #### Design Rationale
 
 - **Safety is in `RAG` and `AGENT`** because these presets aim to be complete starting points. Most users want safety checks without composing two presets.
 - **Fluency is excluded from `AGENT`** because agent evaluation emphasizes tool usage and task completion. Users who need it can compose: `AGENT + [Fluency()]`.
 - **`CONVERSATIONAL_AGENT` excludes `ConversationalRoleAdherence`** because it requires a defined persona in the system prompt, which not all agents have.
-- **`Correctness` is only in `QUALITY`** because it requires `expectations` data. Other presets work out of the box without ground truth.
+- **`Correctness` is excluded from all presets** because it requires `expectations` (ground truth) data. Users who have ground truth can add it manually: `QUALITY + [Correctness()]`.
 - **`Guidelines` and `ConversationalGuidelines` are excluded from all presets** because both require a `guidelines` constructor argument.
 
 ### `list_presets()`
@@ -309,14 +320,22 @@ from mlflow.genai.scorers.builtin_scorers import (
 
 class Preset:
     def __init__(self, name: str, scorers: list[Scorer]):
-        self.name = name
-        self.scorers = list(scorers)
+        self._name = name
+        self._scorers = tuple(scorers)
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def scorers(self) -> tuple:
+        return self._scorers
 
     def __iter__(self):
-        return iter(self.scorers)
+        return iter(self._scorers)
 
     def __len__(self):
-        return len(self.scorers)
+        return len(self._scorers)
 
     def __add__(self, other):
         if isinstance(other, (Preset, list)):
@@ -329,8 +348,8 @@ class Preset:
         return NotImplemented
 
     def __repr__(self):
-        scorer_names = [type(s).__name__ for s in self.scorers]
-        return f"Preset('{self.name}', [{', '.join(scorer_names)}])"
+        scorer_names = [type(s).__name__ for s in self._scorers]
+        return f"Preset('{self._name}', [{', '.join(scorer_names)}])"
 
 
 RAG = Preset("rag", [

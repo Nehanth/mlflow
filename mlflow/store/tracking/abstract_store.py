@@ -19,6 +19,7 @@ from mlflow.entities import (
     ScorerVersion,
     ViewType,
 )
+from mlflow.entities.preset import PresetVersion
 from mlflow.entities.model_registry import PromptVersion
 from mlflow.entities.trace_metrics import (
     MetricAggregation,
@@ -1683,6 +1684,24 @@ class AbstractStore(MCPServerRegistryMixin, GatewayStoreMixin):
         Raises:
             MlflowException: If scorer is not found.
         """
+        raise NotImplementedError(self.__class__.__name__)
+
+    def register_preset(
+        self, experiment_id: str, name: str, serialized_preset: str
+    ) -> PresetVersion:
+        raise NotImplementedError(self.__class__.__name__)
+
+    def list_presets(self, experiment_id: str) -> list[PresetVersion]:
+        raise NotImplementedError(self.__class__.__name__)
+
+    def get_preset(
+        self, experiment_id: str, name: str, version: int | None = None
+    ) -> PresetVersion:
+        raise NotImplementedError(self.__class__.__name__)
+
+    def delete_preset(
+        self, experiment_id: str, name: str, version: int | None = None
+    ) -> None:
         raise NotImplementedError(self.__class__.__name__)
 
     def upsert_online_scoring_config(

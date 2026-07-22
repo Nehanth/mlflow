@@ -4244,3 +4244,104 @@ class SqlMCPAccessEndpoint(Base):
             creation_timestamp=self.created_at,
             last_updated_timestamp=self.last_updated_at,
         )
+
+
+class SqlPreset(Base):
+    """
+    DB model for storing preset information. These are recorded in ``presets`` table.
+    """
+
+    __tablename__ = "presets"
+
+    experiment_id = Column(
+        Integer, ForeignKey("experiments.experiment_id", ondelete="CASCADE"), nullable=False
+    )
+    """
+    Experiment ID to which this preset belongs: *Foreign Key* into ``experiments`` table.
+    """
+    preset_name = Column(String(256), nullable=False)
+    """
+    Preset name: `String` (limit 256 characters). Part of *Primary Key* for ``presets`` table.
+    """
+    preset_id = Column(String(36), nullable=False)
+    """
+    Preset ID: `String` (limit 36 characters). Unique identifier for the preset.
+    """
+
+    experiment = relationship("SqlExperiment", backref=backref("presets", cascade="all"))
+    """
+    SQLAlchemy relationship (many:one) with :py:class:`mlflow.store.dbmodels.models.SqlExperiment`.
+    """
+
+    __table_args__ = (
+        PrimaryKeyConstraint("preset_id", name="preset_pk"),
+        Index(
+            f"index_{__tablename__}_experiment_id_preset_name",
+            "experiment_id",
+            "preset_name",
+            unique=True,
+        ),
+    )
+
+    def __repr__(self):
+        return f"<SqlPreset ({self.experiment_id}, {self.preset_name}, {self.preset_id})>"
+
+
+class SqlPresetVersion(Base):
+    """
+    DB model for storing preset version information. These are recorded in
+    ``preset_versions`` table.
+    """
+
+    __tablename__ = "preset_versions"
+
+    preset_id = Column(
+        String(36), ForeignKey("presets.preset_id", ondelete="CASCADE"), nullable=False
+    )
+    """
+    Preset ID: `String` (limit 36 characters). *Foreign Key* into ``presets`` table.
+    """
+    preset_version = Column(Integer, nullable=False)
+    """
+    Preset version: `Integer`. Part of *Primary Key* for ``preset_versions`` table.
+    """
+    serialized_preset = Column(Text, nullable=False)
+    """
+    Serialized preset data: `Text`. Contains the serialized preset object.
+    """
+    creation_time = Column(BigInteger(), default=get_current_time_millis)
+    """
+    Creation time of preset version: `BigInteger`. Automatically set to current time when created.
+    """
+
+    # Relationship to the parent preset
+    preset = relationship("SqlPreset", backref=backref("preset_versions", cascade="all"))
+    """
+    SQLAlchemy relationship (many:one) with :py:class:`mlflow.store.dbmodels.models.SqlPreset`.
+    """
+
+    __table_args__ = (
+        PrimaryKeyConstraint("preset_id", "preset_version", name="preset_version_pk"),
+        Index(f"index_{__tablename__}_preset_id", "preset_id"),
+    )
+
+    def __repr__(self):
+        return f"<SqlPresetVersion ({self.preset_id}, {self.preset_version})>"
+
+    def to_mlflow_entity(self):
+        """
+        Convert DB model to corresponding MLflow entity.
+
+        Returns:
+            mlflow.entities.PresetVersion.
+        """
+        from mlflow.entities.preset import PresetVersion
+
+        return PresetVersion(
+            experiment_id=str(self.preset.experiment_id),
+            preset_name=self.preset.preset_name,
+            preset_version=self.preset_version,
+            serialized_preset=self.serialized_preset,
+            creation_time=self.creation_time,
+            preset_id=self.preset_id,
+        )

@@ -5595,6 +5595,127 @@ def _delete_scorer():
     return response
 
 
+# =============================================================================
+# Preset Management Handlers
+# TODO: Uncomment after proto bindings are regenerated via dev/generate-protos.sh
+# =============================================================================
+
+# @catch_mlflow_exception
+# @_disable_if_artifacts_only
+# def _register_preset():
+#     request_message = _get_request_message(
+#         RegisterPreset(),
+#         schema={
+#             "experiment_id": [_assert_required, _assert_string],
+#             "name": [_assert_required, _assert_string],
+#             "serialized_preset": [_assert_required, _assert_string],
+#         },
+#     )
+#     preset_version = _get_tracking_store().register_preset(
+#         request_message.experiment_id,
+#         request_message.name,
+#         request_message.serialized_preset,
+#     )
+#     response_message = RegisterPreset.Response()
+#     response_message.version = preset_version.preset_version
+#     response_message.preset_id = preset_version.preset_id
+#     response_message.experiment_id = preset_version.experiment_id
+#     response_message.name = preset_version.preset_name
+#     response_message.serialized_preset = preset_version._serialized_preset
+#     response_message.creation_time = preset_version.creation_time
+#     response = Response(mimetype="application/json")
+#     response.set_data(message_to_json(response_message))
+#     return response
+#
+#
+# @catch_mlflow_exception
+# @_disable_if_artifacts_only
+# def _list_presets():
+#     request_message = _get_request_message(
+#         ListPresets(),
+#         schema={"experiment_id": [_assert_required, _assert_string]},
+#     )
+#     preset_versions = _get_tracking_store().list_presets(request_message.experiment_id)
+#     response_message = ListPresets.Response()
+#     response_message.presets.extend([pv.to_proto() for pv in preset_versions])
+#     response = Response(mimetype="application/json")
+#     response.set_data(message_to_json(response_message))
+#     return response
+#
+#
+# @catch_mlflow_exception
+# @_disable_if_artifacts_only
+# def _get_preset():
+#     request_message = _get_request_message(
+#         GetPreset(),
+#         schema={
+#             "experiment_id": [_assert_required, _assert_string],
+#             "name": [_assert_required, _assert_string],
+#             "version": [_assert_intlike],
+#         },
+#     )
+#     preset_version = _get_tracking_store().get_preset(
+#         request_message.experiment_id,
+#         request_message.name,
+#         request_message.version if request_message.HasField("version") else None,
+#     )
+#     response_message = GetPreset.Response()
+#     response_message.preset.CopyFrom(preset_version.to_proto())
+#     response = Response(mimetype="application/json")
+#     response.set_data(message_to_json(response_message))
+#     return response
+#
+#
+# @catch_mlflow_exception
+# @_disable_if_artifacts_only
+# def _delete_preset():
+#     request_message = _get_request_message(
+#         DeletePreset(),
+#         schema={
+#             "experiment_id": [_assert_required, _assert_string],
+#             "name": [_assert_required, _assert_string],
+#             "version": [_assert_intlike],
+#         },
+#     )
+#     _get_tracking_store().delete_preset(
+#         request_message.experiment_id,
+#         request_message.name,
+#         request_message.version if request_message.HasField("version") else None,
+#     )
+#     response_message = DeletePreset.Response()
+#     response = Response(mimetype="application/json")
+#     response.set_data(message_to_json(response_message))
+#     return response
+#
+#
+# @catch_mlflow_exception
+# @_disable_if_artifacts_only
+# def _copy_preset():
+#     request_message = _get_request_message(
+#         CopyPreset(),
+#         schema={
+#             "experiment_id": [_assert_required, _assert_string],
+#             "name": [_assert_required, _assert_string],
+#             "to_experiment_id": [_assert_required, _assert_string],
+#         },
+#     )
+#     source = _get_tracking_store().get_preset(
+#         request_message.experiment_id,
+#         request_message.name,
+#     )
+#     preset_version = _get_tracking_store().register_preset(
+#         request_message.to_experiment_id,
+#         request_message.name,
+#         source._serialized_preset,
+#     )
+#     response_message = CopyPreset.Response()
+#     response_message.version = preset_version.preset_version
+#     response_message.preset_id = preset_version.preset_id
+#     response = Response(mimetype="application/json")
+#     response.set_data(message_to_json(response_message))
+#     return response
+
+
 @catch_mlflow_exception
 @_disable_if_artifacts_only
 def _get_online_scoring_configs():

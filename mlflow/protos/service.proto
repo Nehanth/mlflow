@@ -1876,6 +1876,100 @@ service MlflowService {
     };
   }
 
+  // =============================================================================
+  // Preset Management RPCs
+  // =============================================================================
+
+  // Register a preset for an experiment.
+  rpc registerPreset(RegisterPreset) returns (RegisterPreset.Response) {
+    option (rpc) = {
+      endpoints: [
+        {
+          method: "POST"
+          path: "/mlflow/scorer-presets/register"
+          since: {
+            major: 3
+            minor: 14
+          }
+        }
+      ]
+      visibility: PUBLIC
+      rpc_doc_title: "Register Preset"
+    };
+  }
+
+  // List all presets for an experiment.
+  rpc listPresets(ListPresets) returns (ListPresets.Response) {
+    option (rpc) = {
+      endpoints: [
+        {
+          method: "GET"
+          path: "/mlflow/scorer-presets/list"
+          since: {
+            major: 3
+            minor: 14
+          }
+        }
+      ]
+      visibility: PUBLIC
+      rpc_doc_title: "List Presets"
+    };
+  }
+
+  // Get a specific preset for an experiment.
+  rpc getPreset(GetPreset) returns (GetPreset.Response) {
+    option (rpc) = {
+      endpoints: [
+        {
+          method: "GET"
+          path: "/mlflow/scorer-presets/get"
+          since: {
+            major: 3
+            minor: 14
+          }
+        }
+      ]
+      visibility: PUBLIC
+      rpc_doc_title: "Get Preset"
+    };
+  }
+
+  // Delete a preset for an experiment.
+  rpc deletePreset(DeletePreset) returns (DeletePreset.Response) {
+    option (rpc) = {
+      endpoints: [
+        {
+          method: "DELETE"
+          path: "/mlflow/scorer-presets/delete"
+          since: {
+            major: 3
+            minor: 14
+          }
+        }
+      ]
+      visibility: PUBLIC
+      rpc_doc_title: "Delete Preset"
+    };
+  }
+
+  // Copy a preset to another experiment.
+  rpc copyPreset(CopyPreset) returns (CopyPreset.Response) {
+    option (rpc) = {
+      endpoints: [
+        {
+          method: "POST"
+          path: "/mlflow/scorer-presets/copy"
+          since: {
+            major: 3
+            minor: 14
+          }
+        }
+      ]
+      visibility: PUBLIC
+      rpc_doc_title: "Copy Preset"
+    };
+  }
+
   // Get records for an evaluation dataset
   rpc getDatasetRecords(GetDatasetRecords) returns (GetDatasetRecords.Response) {
     option (rpc) = {
@@ -6160,4 +6254,112 @@ message DeleteWorkspace {
   optional string workspace_name = 1 [(validate_required) = true];
 
   message Response {}
+}
+
+// ========== Preset Management Messages ==========
+
+// Register a preset for an experiment.
+message RegisterPreset {
+  option (scalapb.message).extends = "com.databricks.rpc.RPC[$this.Response]";
+
+  // The experiment ID.
+  optional string experiment_id = 1;
+  // The preset name.
+  optional string name = 2;
+  // The serialized preset string (JSON).
+  optional string serialized_preset = 3;
+
+  message Response {
+    // The new version number for the preset.
+    optional int32 version = 1;
+    // The unique identifier for the preset.
+    optional string preset_id = 2;
+    // The experiment ID.
+    optional string experiment_id = 3;
+    // The preset name.
+    optional string name = 4;
+    // The serialized preset string.
+    optional string serialized_preset = 5;
+    // The creation time of the preset version (in milliseconds since epoch).
+    optional int64 creation_time = 6;
+  }
+}
+
+// List all presets for an experiment.
+message ListPresets {
+  option (scalapb.message).extends = "com.databricks.rpc.RPC[$this.Response]";
+
+  // The experiment ID.
+  optional string experiment_id = 1;
+
+  message Response {
+    // List of preset entities (latest version for each preset name).
+    repeated PresetEntity presets = 1;
+  }
+}
+
+// Get a specific preset for an experiment.
+message GetPreset {
+  option (scalapb.message).extends = "com.databricks.rpc.RPC[$this.Response]";
+
+  // The experiment ID.
+  optional string experiment_id = 1;
+  // The preset name.
+  optional string name = 2;
+  // The preset version. If not specified, returns the preset with maximum version.
+  optional int32 version = 3;
+
+  message Response {
+    // The preset entity.
+    optional PresetEntity preset = 1;
+  }
+}
+
+// Delete a preset for an experiment.
+message DeletePreset {
+  option (scalapb.message).extends = "com.databricks.rpc.RPC[$this.Response]";
+
+  // The experiment ID.
+  optional string experiment_id = 1;
+  // The preset name.
+  optional string name = 2;
+  // The preset version to delete. If not specified, deletes all versions.
+  optional int32 version = 3;
+
+  message Response {}
+}
+
+// Copy a preset to another experiment.
+message CopyPreset {
+  option (scalapb.message).extends = "com.databricks.rpc.RPC[$this.Response]";
+
+  // The source experiment ID.
+  optional string experiment_id = 1;
+  // The preset name.
+  optional string name = 2;
+  // The target experiment ID.
+  optional string to_experiment_id = 3;
+
+  message Response {
+    // The new version number in the target experiment.
+    optional int32 version = 1;
+    // The new preset ID in the target experiment.
+    optional string preset_id = 2;
+  }
+}
+
+// Preset entity representing a preset in the database.
+message PresetEntity {
+  // The experiment ID.
+  optional int32 experiment_id = 1;
+  // The preset name.
+  optional string preset_name = 2;
+  // The preset version.
+  optional int32 preset_version = 3;
+  // The serialized preset string.
+  optional string serialized_preset = 4;
+  // The creation time of the preset version (in milliseconds since epoch).
+  optional int64 creation_time = 5;
+  // The unique identifier for the preset.
+  optional string preset_id = 6;
 }

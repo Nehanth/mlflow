@@ -71,6 +71,7 @@ from mlflow.entities.logged_model_status import LoggedModelStatus
 from mlflow.entities.logged_model_tag import LoggedModelTag
 from mlflow.entities.metric import Metric, MetricWithRunId
 from mlflow.entities.model_registry import PromptVersion
+from mlflow.entities.preset import PresetVersion
 from mlflow.entities.span import LazySpan
 from mlflow.entities.span_status import SpanStatusCode
 from mlflow.entities.trace import Span
@@ -154,6 +155,8 @@ from mlflow.store.tracking.dbmodels.models import (
     SqlMetric,
     SqlOnlineScoringConfig,
     SqlParam,
+    SqlPreset,
+    SqlPresetVersion,
     SqlReviewQueue,
     SqlReviewQueueItem,
     SqlReviewQueueLabelSchema,
@@ -3011,6 +3014,193 @@ class SqlAlchemyStore(SqlAlchemyMCPServerRegistryMixin, SqlAlchemyGatewayStoreMi
                 )
                 for i, sv in enumerate(sql_scorer_versions)
             ]
+
+    def register_preset(
+        self, experiment_id: str, name: str, serialized_preset: str
+    ) -> PresetVersion:
+        with self.ManagedSessionMaker(read_only=False) as session:
+            experiment = self.get_experiment(experiment_id)
+            self._check_experiment_is_active(experiment)
+
+            preset = (
+                session
+                .query(SqlPreset)
+                .filter(
+                    SqlPreset.experiment_id == experiment_id,
+                    SqlPreset.preset_name == name,
+                )
+                .first()
+            )
+
+            if preset is None:
+                preset_id = str(uuid.uuid4())
+                preset = SqlPreset(
+                    experiment_id=experiment_id,
+                    preset_name=name,
+                    preset_id=preset_id,
+                )
+                session.add(preset)
+                session.flush()
+
+            max_version = (
+                session
+                .query(func.max(SqlPresetVersion.preset_version))
+                .filter(SqlPresetVersion.preset_id == preset.preset_id)
+                .scalar()
+            )
+
+            new_version = 1 if max_version is None else max_version + 1
+
+            sql_preset_version = SqlPresetVersion(
+                preset_id=preset.preset_id,
+                preset_version=new_version,
+                serialized_preset=serialized_preset,
+            )
+            session.add(sql_preset_version)
+            session.flush()
+
+            return sql_preset_version.to_mlflow_entity()
+
+    def list_presets(self, experiment_id: str) -> list[PresetVersion]:
+        experiment = self.get_experiment(experiment_id)
+        self._check_experiment_is_active(experiment)
+
+        with self.ManagedSessionMaker() as session:
+            preset_ids = [
+                row.preset_id
+                for row in session
+                .query(SqlPreset.preset_id)
+                .filter(SqlPreset.experiment_id == experiment.experiment_id)
+                .all()
+            ]
+
+            if not preset_ids:
+                return []
+
+            latest_versions = (
+                session
+                .query(
+                    SqlPresetVersion.preset_id,
+                    func.max(SqlPresetVersion.preset_version).label("max_version"),
+                )
+                .filter(SqlPresetVersion.preset_id.in_(preset_ids))
+                .group_by(SqlPresetVersion.preset_id)
+                .subquery()
+            )
+
+            sql_preset_versions = (
+                session
+                .query(SqlPresetVersion)
+                .join(
+                    latest_versions,
+                    (SqlPresetVersion.preset_id == latest_versions.c.preset_id)
+                    & (SqlPresetVersion.preset_version == latest_versions.c.max_version),
+                )
+                .join(SqlPreset, SqlPresetVersion.preset_id == SqlPreset.preset_id)
+                .order_by(SqlPreset.preset_name)
+                .all()
+            )
+
+            return [sv.to_mlflow_entity() for sv in sql_preset_versions]
+
+    def get_preset(
+        self, experiment_id: str, name: str, version: int | None = None
+    ) -> PresetVersion:
+        with self.ManagedSessionMaker() as session:
+            experiment = self.get_experiment(experiment_id)
+            self._check_experiment_is_active(experiment)
+
+            preset = (
+                session
+                .query(SqlPreset)
+                .filter(
+                    SqlPreset.experiment_id == experiment.experiment_id,
+                    SqlPreset.preset_name == name,
+                )
+                .first()
+            )
+
+            if preset is None:
+                raise MlflowException(
+                    f"Preset with name '{name}' not found for experiment {experiment_id}.",
+                    RESOURCE_DOES_NOT_EXIST,
+                )
+
+            query = session.query(SqlPresetVersion).filter(
+                SqlPresetVersion.preset_id == preset.preset_id
+            )
+            if version is not None:
+                sql_preset_version = query.filter(
+                    SqlPresetVersion.preset_version == version
+                ).first()
+                if sql_preset_version is None:
+                    raise MlflowException(
+                        f"Preset with name '{name}' and version {version} not found for "
+                        f"experiment {experiment_id}.",
+                        RESOURCE_DOES_NOT_EXIST,
+                    )
+            else:
+                sql_preset_version = query.order_by(
+                    SqlPresetVersion.preset_version.desc()
+                ).first()
+                if sql_preset_version is None:
+                    raise MlflowException(
+                        f"Preset with name '{name}' not found for experiment {experiment_id}.",
+                        RESOURCE_DOES_NOT_EXIST,
+                    )
+
+            return sql_preset_version.to_mlflow_entity()
+
+    def delete_preset(
+        self, experiment_id: str, name: str, version: int | None = None
+    ) -> None:
+        with self.ManagedSessionMaker(read_only=False) as session:
+            experiment = self.get_experiment(experiment_id)
+            self._check_experiment_is_active(experiment)
+
+            preset = (
+                session
+                .query(SqlPreset)
+                .filter(
+                    SqlPreset.experiment_id == experiment.experiment_id,
+                    SqlPreset.preset_name == name,
+                )
+                .first()
+            )
+
+            if preset is None:
+                raise MlflowException(
+                    f"Preset with name '{name}' not found for experiment {experiment_id}.",
+                    RESOURCE_DOES_NOT_EXIST,
+                )
+
+            query = session.query(SqlPresetVersion).filter(
+                SqlPresetVersion.preset_id == preset.preset_id
+            )
+
+            if version is not None:
+                query = query.filter(SqlPresetVersion.preset_version == version)
+
+            sql_preset_versions = query.all()
+
+            if not sql_preset_versions:
+                if version is not None:
+                    raise MlflowException(
+                        f"Preset with name '{name}' and version {version} not found for"
+                        f" experiment {experiment_id}.",
+                        RESOURCE_DOES_NOT_EXIST,
+                    )
+                else:
+                    raise MlflowException(
+                        f"Preset with name '{name}' not found for experiment {experiment_id}.",
+                        RESOURCE_DOES_NOT_EXIST,
+                    )
+
+            for sql_preset_version in sql_preset_versions:
+                session.delete(sql_preset_version)
+
+            if version is None:
+                session.delete(preset)
 
     def get_online_scoring_configs(self, scorer_ids: list[str]) -> list[OnlineScoringConfig]:
         """

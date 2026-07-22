@@ -43,10 +43,32 @@ def validate_scorers(scorers: list[Any]) -> list[Scorer]:
     if len(scorers) == 0:
         return []
 
+    # Flatten any Preset objects into individual scorers
+    from mlflow.genai.scorers.presets import Preset
+
+    flat_scorers = []
+    for item in scorers:
+        if isinstance(item, Preset):
+            flat_scorers.extend(item)
+        else:
+            flat_scorers.append(item)
+
+    # Deduplicate by (type, name) after flattening
+    seen: set[tuple[type, str]] = set()
+    deduped_scorers = []
+    for s in flat_scorers:
+        if isinstance(s, Scorer):
+            key = (type(s), s.name)
+            if key not in seen:
+                seen.add(key)
+                deduped_scorers.append(s)
+        else:
+            deduped_scorers.append(s)
+
     valid_scorers = []
     legacy_metrics = []
 
-    for scorer in scorers:
+    for scorer in deduped_scorers:
         if isinstance(scorer, Scorer):
             valid_scorers.append(scorer)
         else:

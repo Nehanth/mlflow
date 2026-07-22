@@ -1850,6 +1850,30 @@ class RestStore(
             endpoint="/api/3.0/mlflow/scorers/delete",
         )
 
+    ############################################################################################
+    # Preset Management APIs
+    ############################################################################################
+
+    # TODO: Implement once proto endpoints are defined for presets.
+
+    def register_preset(
+        self, experiment_id: str, name: str, serialized_preset: str
+    ) -> "PresetVersion":
+        raise NotImplementedError("Preset REST endpoints are not yet defined.")
+
+    def list_presets(self, experiment_id: str) -> list["PresetVersion"]:
+        raise NotImplementedError("Preset REST endpoints are not yet defined.")
+
+    def get_preset(
+        self, experiment_id: str, name: str, version: int | None = None
+    ) -> "PresetVersion":
+        raise NotImplementedError("Preset REST endpoints are not yet defined.")
+
+    def delete_preset(
+        self, experiment_id: str, name: str, version: int | None = None
+    ) -> None:
+        raise NotImplementedError("Preset REST endpoints are not yet defined.")
+
     def upsert_online_scoring_config(
         self,
         experiment_id: str,

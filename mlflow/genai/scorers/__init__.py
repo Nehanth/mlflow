@@ -26,6 +26,16 @@ FRAMEWORK_METADATA_KEY = "mlflow.scorer.framework"
 
 
 # Define the attributes that should be lazily loaded
+_LAZY_IMPORTS_PRESETS = {
+    "Preset",
+    "Rag",
+    "Agent",
+    "ConversationalAgent",
+    "get_scorer_preset",
+    "list_scorer_presets",
+    "delete_scorer_preset",
+}
+
 _LAZY_IMPORTS = {
     "Completeness",
     "ConversationalGuidelines",
@@ -56,12 +66,20 @@ _LAZY_IMPORTS = {
 
 
 def __getattr__(name):
-    """Lazily import builtin scorers to avoid circular dependency."""
+    """Lazily import builtin scorers and presets to avoid circular dependency."""
     if name in _LAZY_IMPORTS:
-        # Import the module when first accessed
         from mlflow.genai.scorers import builtin_scorers
 
         return getattr(builtin_scorers, name)
+
+    if name in _LAZY_IMPORTS_PRESETS:
+        if name in ("get_scorer_preset", "list_scorer_presets", "delete_scorer_preset"):
+            from mlflow.genai.scorers import preset_registry
+
+            return getattr(preset_registry, name)
+        from mlflow.genai.scorers import presets
+
+        return getattr(presets, name)
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
@@ -75,7 +93,7 @@ def __dir__():
     # Get the default module attributes
     module_attrs = list(globals().keys())
     # Add the lazy imports
-    return sorted(set(module_attrs) | _LAZY_IMPORTS)
+    return sorted(set(module_attrs) | _LAZY_IMPORTS | _LAZY_IMPORTS_PRESETS)
 
 
 # The TYPE_CHECKING block below is for static analysis tools only.
@@ -108,6 +126,17 @@ if TYPE_CHECKING:
         ToolCallEfficiency,
         UserFrustration,
         get_all_scorers,
+    )
+    from mlflow.genai.scorers.preset_registry import (
+        delete_scorer_preset,
+        get_scorer_preset,
+        list_scorer_presets,
+    )
+    from mlflow.genai.scorers.presets import (
+        Agent,
+        ConversationalAgent,
+        Preset,
+        Rag,
     )
 
 __all__ = [
@@ -142,4 +171,11 @@ __all__ = [
     "get_scorer",
     "list_scorers",
     "delete_scorer",
+    "Preset",
+    "Rag",
+    "Agent",
+    "ConversationalAgent",
+    "get_scorer_preset",
+    "list_scorer_presets",
+    "delete_scorer_preset",
 ]
